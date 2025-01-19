@@ -1,0 +1,86 @@
+#include <SoftwareSerial.h>
+#include <LiquidCrystal_I2C.h>
+#include <Servo.h>
+
+#define GSM_TX 2
+#define GSM_RX 3
+#define MQ2_PIN A0
+#define FAN_PIN 10
+#define THRESHOLD 100
+
+const int buzzerPin = 8;
+SoftwareSerial gsm(GSM_TX, GSM_RX);
+Servo myservo;
+LiquidCrystal_I2C lcd(0x27, 16, 2);
+
+bool gasDetected = false;
+int originalPosition = 0;
+
+void setup() {
+  Serial.begin(9600);
+  gsm.begin(9600);
+  pinMode(MQ2_PIN, INPUT);
+  pinMode(buzzerPin, OUTPUT);
+  pinMode(FAN_PIN, OUTPUT);
+  
+  lcd.init();
+  lcd.backlight();
+  lcd.clear();
+  lcd.setCursor(0, 0);
+  lcd.print("No Gas Detected");
+  
+  myservo.attach(9);
+  myservo.write(originalPosition);
+}
+
+void loop() {
+  int sensorValue = analogRead(MQ2_PIN);
+  
+  if (sensorValue > THRESHOLD && !gasDetected) {
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("Gas Detected");
+    digitalWrite(buzzerPin, HIGH);
+    digitalWrite(FAN_PIN, HIGH);
+    makeCallAndSMS("+919030091377", "Gas detected! Please take action.");
+    
+    
+    for (int angle = originalPosition; angle <= originalPosition + 180; angle += 1) {
+      myservo.write(angle);
+      delay(15);
+    }
+    
+    originalPosition += 180;
+    gasDetected = true;
+  }
+  
+  if (sensorValue <= THRESHOLD && gasDetected) {
+    digitalWrite(buzzerPin, LOW);
+    digitalWrite(FAN_PIN, LOW);
+    lcd.clear();
+    lcd.setCursor(0, 0);
+    lcd.print("No Gas Detected");
+    gasDetected = false;
+  }
+  
+  delay(1000);
+}
+
+void makeCallAndSMS(String phoneNumber, String message) {
+  gsm.println("AT");
+  delay(1000);
+  gsm.println("ATD" + phoneNumber + ";");
+  delay(10000);
+  gsm.println("ATH");
+  delay(1000);
+  
+  gsm.println("AT+CMGF=1");
+  delay(1000);
+  gsm.println("AT+CMGS=\"" + phoneNumber + "\"");
+  delay(1000);
+  gsm.print(message);
+  delay(1000);
+  gsm.write(26);
+  delay(1000);
+  gsm.println();
+}
